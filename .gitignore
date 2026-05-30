@@ -1,0 +1,47 @@
+# ── 가상환경 / 패키지 ──
+.venv/
+venv/
+env/
+ENV/
+
+# ── Python 빌드 산출물 ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+predict_stock.egg-info/
+
+# ── 의존성 / 잠금 파일 (GitHub에 올리지 않음) ──
+requirements.txt
+uv.lock
+Pipfile
+Pipfile.lock
+poetry.lock
+
+# ── 생성 데이터 / 모델 / 로그 (GitHub에 올리지 않음) ──
+data/
+models/
+logs/
+analysis/
+predictions/
+*.csv
+*.pkl
+*.pickle
+flask.log
+
+# ── 환경 변수 / 비밀 ──
+.env
+.env.local
+.env.*
+
+# ── IDE / OS ──
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if has_model and stock %}{{ stock.name }} - {% endif %}주가 예측</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; color: white; margin-bottom: 30px; }
+        .header h1 { font-size: 2.2em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .header p { font-size: 1.05em; opacity: 0.9; }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+        }
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .search-box { display: flex; gap: 10px; margin-bottom: 15px; }
+        .search-box input {
+            flex: 1;
+            padding: 14px 18px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1em;
+        }
+        .search-box input:focus { outline: none; border-color: #667eea; }
+        .search-box button, .retrain-button, .btn-primary, .btn-secondary {
+            border: none;
+            padding: 14px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+        }
+        .search-box button, .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .search-box button:hover, .btn-primary:hover { background: #5568d3; }
+        .search-results { list-style: none; max-height: 320px; overflow-y: auto; }
+        .search-result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid #eee;
+            gap: 12px;
+        }
+        .search-result-item:hover { background: #f8f9ff; }
+        .result-info strong { display: block; color: #333; margin-bottom: 4px; }
+        .result-info span { color: #666; font-size: 0.9em; }
+        .select-btn {
+            background: #764ba2;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .select-btn:hover { background: #653a8a; }
+        .select-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .current-stock {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 14px 18px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #2e7d32;
+        }
+        .welcome-msg {
+            text-align: center;
+            color: #666;
+            padding: 30px 10px;
+            line-height: 1.8;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .info-label { color: #666; font-weight: 600; }
+        .info-value { color: #333; font-weight: 700; text-align: right; }
+        .prediction-section { grid-column: 1 / -1; }
+        .prediction-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+        }
+        .prediction-price { font-size: 2.5em; font-weight: bold; margin: 15px 0; }
+        .change-up { color: #ff4757; }
+        .change-down { color: #2ed573; }
+        .change-neutral { color: #ffa502; }
+        .recent-data { grid-column: 1 / -1; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background-color: #f8f9fa; }
+        th, td { padding: 15px; text-align: right; border-bottom: 1px solid #ddd; }
+        th { color: #667eea; font-weight: 600; }
+        tr:hover { background-color: #f8f9fa; }
+        .retrain-section { text-align: center; margin-bottom: 30px; }
+        .retrain-button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+        }
+        .retrain-button:hover:not(:disabled) { transform: translateY(-2px); }
+        .retrain-button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .retrain-hint { color: white; font-size: 0.9em; margin-top: 10px; opacity: 0.9; }
+        .warning {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .warning ul { margin: 10px 0 0 20px; }
+        .timestamp { text-align: center; color: white; font-size: 0.9em; margin-top: 20px; opacity: 0.8; }
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .step { display: flex; align-items: center; padding: 10px; margin: 10px 0; background: #f5f5f5; border-radius: 8px; border-left: 4px solid #ddd; }
+        .step.completed { background: #e8f5e9; border-left-color: #4caf50; }
+        .step.current { background: #e3f2fd; border-left-color: #2196f3; }
+        .step-icon { width: 30px; text-align: center; margin-right: 10px; font-size: 1.2em; }
+        .step.completed .step-icon::before { content: '✓'; color: #4caf50; }
+        .step.current .step-icon::before { content: '●'; color: #2196f3; }
+        .status-message { padding: 15px; border-radius: 8px; margin: 15px 0; text-align: center; }
+        .status-message.success { background: #c8e6c9; color: #2e7d32; }
+        .status-message.error { background: #ffcdd2; color: #c62828; }
+        .modal-footer { display: flex; justify-content: flex-end; margin-top: 20px; }
+        .btn-secondary { background: #ddd; color: #333; }
+        .empty-results { color: #888; text-align: center; padding: 20px; }
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .analysis-block {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 18px;
+            border: 1px solid #e8ebff;
+        }
+        .analysis-block h3 {
+            color: #667eea;
+            font-size: 1.05em;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #dde2ff;
+        }
+        .analysis-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.95em;
+            border-bottom: 1px dashed #eee;
+        }
+        .analysis-row:last-child { border-bottom: none; }
+        .analysis-label { color: #666; }
+        .analysis-value { color: #333; font-weight: 600; text-align: right; }
+        .analysis-section { margin-bottom: 30px; }
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 24px;
+        }
+        .chart-box {
+            background: #fafbff;
+            border: 1px solid #e8ebff;
+            border-radius: 12px;
+            padding: 16px;
+            min-height: 320px;
+        }
+        .chart-box.full-width { grid-column: 1 / -1; min-height: 380px; }
+        .chart-box h3 {
+            color: #667eea;
+            font-size: 1em;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        .chart-canvas-wrap { position: relative; height: 280px; }
+        .chart-box.full-width .chart-canvas-wrap { height: 340px; }
+        .metric-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea15, #764ba215);
+            border: 1px solid #dde2ff;
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+        }
+        .metric-card .label { font-size: 0.8em; color: #666; margin-bottom: 6px; }
+        .metric-card .value { font-size: 1.15em; font-weight: 700; color: #333; }
+        .has-tip {
+            position: relative;
+            cursor: help;
+            border-bottom: 1px dotted #667eea;
+            display: inline-block;
+        }
+        .has-tip::after {
+            content: attr(data-tip);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 10px);
+            transform: translateX(-50%);
+            min-width: 200px;
+            max-width: 300px;
+            padding: 10px 12px;
+            background: #2d3436;
+            color: #fff;
+            font-size: 0.78em;
+            font-weight: 400;
+            line-height: 1.5;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+            white-space: normal;
+            text-align: left;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 100;
+            pointer-events: none;
+        }
+        .has-tip::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 4px);
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #2d3436;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 100;
+        }
+        .has-tip:hover::after,
+        .has-tip:hover::before,
+        .has-tip:focus-visible::after,
+        .has-tip:focus-visible::before {
+            opacity: 1;
+            visibility: visible;
+        }
+        .chart-box h3 .has-tip::after { left: 0; transform: none; }
+        .chart-box h3 .has-tip::before { left: 20px; transform: none; }
+        .analysis-label.has-tip::after { left: 0; transform: none; }
+        .analysis-label.has-tip::before { left: 12px; transform: none; }
+        @media (max-width: 768px) {
+            .chart-grid { grid-template-columns: 1fr; }
+            .chart-box.full-width { grid-column: auto; }
+        }
+        @media (max-width: 768px) {
+            .main-content { grid-template-columns: 1fr; }
+            .header h1 { font-size: 1.7em; }
+            .search-box { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔮 {% if has_model and stock %}{{ stock.name }} {% endif %}주가 예측</h1>
+            <p>Yahoo Finance 검색 → 5년 데이터 수집 → AI 선형 회귀 예측</p>
+        </div>
+
+        <!-- 종목 검색 -->
+        <div class="card">
+            <h2>🔍 종목 검색</h2>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="종목명 또는 티커 입력 (예: 삼성전자, AAPL, 005930)" autocomplete="off">
+                <button type="button" onclick="searchStocks()">검색</button>
+            </div>
+            <ul class="search-results" id="searchResults"></ul>
+            {% if has_model and stock %}
+            <div class="current-stock">
+                <strong>현재 선택 종목:</strong> {{ stock.name }} ({{ stock.ticker }})
+                {% if stock.exchange %} · {{ stock.exchange }}{% endif %}
+            </div>
+            {% else %}
+            <div class="welcome-msg">
+                종목을 검색한 뒤 <strong>선택</strong>을 누르면 Yahoo Finance에서 5년치 데이터를 수집하고<br>
+                모델을 학습한 후 예측 결과를 표시합니다.
+            </div>
+            {% endif %}
+        </div>
+
+        {% if has_model and dashboard %}
+        <div class="retrain-section">
+            <button class="retrain-button" onclick="openWorkflowModal('retrain')" id="retrainBtn">
+                🔄 최신 데이터로 재학습
+            </button>
+            <p class="retrain-hint">선택 종목의 최신 5년 데이터를 다시 수집하여 모델을 갱신합니다.</p>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>📊 최근 거래 정보</h2>
+                <div class="info-item"><span class="info-label">종목</span><span class="info-value">{{ stock.name }} ({{ stock.ticker }})</span></div>
+                <div class="info-item"><span class="info-label">날짜</span><span class="info-value">{{ dashboard.prediction.today_date }}</span></div>
+                <div class="info-item"><span class="info-label">시가</span><span class="info-value">{{ dashboard.prediction.today_open|format_price }}</span></div>
+                <div class="info-item"><span class="info-label">고가</span><span class="info-value">{{ dashboard.prediction.today_high|format_price }}</span></div>
+                <div class="info-item"><span class="info-label">저가</span><span class="info-value">{{ dashboard.prediction.today_low|format_price }}</span></div>
+                <div class="info-item"><span class="info-label">종가</span><span class="info-value">{{ dashboard.prediction.today_close|format_price }}</span></div>
+                <div class="info-item"><span class="info-label">거래량</span><span class="info-value">{{ "{:,}".format(dashboard.prediction.today_volume) }}</span></div>
+            </div>
+
+            <div class="card">
+                <h2>🎯 내일 주가 예측</h2>
+                <div class="info-item"><span class="info-label">예측 날짜</span><span class="info-value">{{ dashboard.prediction.tomorrow_date }}</span></div>
+                <div class="info-item"><span class="info-label">예측 종가</span><span class="info-value" style="font-size:1.2em;color:#667eea;">{{ dashboard.prediction.predicted_close|format_price }}</span></div>
+                <div class="info-item">
+                    <span class="info-label">예상 변동</span>
+                    <span class="info-value">
+                        {% if dashboard.prediction.expected_change > 0 %}
+                        <span class="change-up">▲ {{ dashboard.prediction.expected_change|format_price }}</span>
+                        {% elif dashboard.prediction.expected_change < 0 %}
+                        <span class="change-down">▼ {{ dashboard.prediction.expected_change|format_price }}</span>
+                        {% else %}
+                        <span class="change-neutral">▬ 0</span>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">변동률</span>
+                    <span class="info-value">
+                        {% if dashboard.prediction.expected_change_pct > 0 %}
+                        <span class="change-up">▲ {{ "%.2f"|format(dashboard.prediction.expected_change_pct) }}%</span>
+                        {% elif dashboard.prediction.expected_change_pct < 0 %}
+                        <span class="change-down">▼ {{ "%.2f"|format(dashboard.prediction.expected_change_pct) }}%</span>
+                        {% else %}
+                        <span class="change-neutral">▬ 0.00%</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% if dashboard.model_info.r2_score is defined %}
+                <div class="info-item"><span class="info-label">모델 R²</span><span class="info-value">{{ "%.4f"|format(dashboard.model_info.r2_score) }}</span></div>
+                {% endif %}
+            </div>
+
+            <div class="prediction-section">
+                <div class="prediction-box">
+                    <h3>📈 내일 예측 종가</h3>
+                    <div class="prediction-price">{{ dashboard.prediction.predicted_close|format_price }}</div>
+                    <div>
+                        {% if dashboard.prediction.expected_change_pct > 1.0 %}상승세가 강할 것으로 예상됩니다 🚀
+                        {% elif dashboard.prediction.expected_change_pct > 0.5 %}약한 상승세가 예상됩니다 📈
+                        {% elif dashboard.prediction.expected_change_pct < -1.0 %}하락세가 강할 것으로 예상됩니다 📉
+                        {% elif dashboard.prediction.expected_change_pct < -0.5 %}약한 하락세가 예상됩니다 📉
+                        {% else %}거의 변동 없을 것으로 예상됩니다 ➡️{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-data">
+                <div class="card">
+                    <h2>📋 최근 10일 주가</h2>
+                    <table>
+                        <thead><tr><th>날짜</th><th>시가</th><th>고가</th><th>저가</th><th>종가</th><th>거래량</th></tr></thead>
+                        <tbody>
+                            {% for data in dashboard.recent_data %}
+                            <tr>
+                                <td>{{ data.date }}</td>
+                                <td>{{ data.open }}</td>
+                                <td>{{ data.high }}</td>
+                                <td>{{ data.low }}</td>
+                                <td>{{ data.close }}</td>
+                                <td>{{ data.volume }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card warning" style="grid-column:1/-1;">
+                <strong>⚠️ 중요 안내</strong>
+                <ul>
+                    <li>선형 회귀 모델 기반 참고용 예측입니다.</li>
+                    <li>실제 주가는 다양한 외부 요인에 영향을 받습니다.</li>
+                    <li>투자 결정은 전문가 상담 후 신중하게 하세요.</li>
+                </ul>
+            </div>
+        </div>
+
+        {% if dashboard.analysis or dashboard.chart_data %}
+        <div class="analysis-section" id="analysisSection">
+            <div class="card">
+                <h2>📊 5년 주가 분석</h2>
+                <p style="color:#666;margin-bottom:8px;">
+                    {{ stock.name }} ({{ stock.ticker }}) — Yahoo Finance 5년 데이터 기반 기술적·밸류에이션 분석
+                </p>
+                <p style="color:#888;font-size:0.85em;margin-bottom:16px;">
+                    💡 밑줄(점선)이 있는 지표·차트 제목에 마우스를 올리면 의미 설명이 표시됩니다. 그래프 위 데이터에도 마우스를 올려 보세요.
+                </p>
+
+                {% if dashboard.analysis and dashboard.analysis.get('risk_metrics') %}
+                <div class="metric-cards">
+                    <div class="metric-card">
+                        <div class="label"><span class="has-tip" data-tip-key="연환산 변동성">연환산 변동성</span></div>
+                        <div class="value">{{ "%.2f"|format(dashboard.analysis.risk_metrics.annualized_volatility_pct) }}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label"><span class="has-tip" data-tip-key="최대 낙폭 (MDD)">최대 낙폭 (MDD)</span></div>
+                        <div class="value change-down">{{ "%.2f"|format(dashboard.analysis.risk_metrics.max_drawdown_pct) }}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label"><span class="has-tip" data-tip-key="Sharpe Ratio">Sharpe Ratio</span></div>
+                        <div class="value">{{ "%.2f"|format(dashboard.analysis.risk_metrics.sharpe_ratio) }}</div>
+                    </div>
+                    {% if dashboard.analysis.get('valuation') and dashboard.analysis.valuation.get('metrics') %}
+                        {% for label, value in dashboard.analysis.valuation.metrics.items() %}
+                        {% if loop.index <= 6 %}
+                        <div class="metric-card">
+                            <div class="label"><span class="has-tip" data-tip-key="{{ label }}">{{ label }}</span></div>
+                            <div class="value">
+                                {% if label == '시가총액' and value > 1e12 %}{{ "%.2f"|format(value / 1e12) }}T
+                                {% elif label == '시가총액' and value > 1e9 %}{{ "%.2f"|format(value / 1e9) }}B
+                                {% elif label == '배당수익률' %}{{ "%.2f"|format(value) }}%
+                                {% elif value is number and value|abs < 1000 %}{{ "%.2f"|format(value) }}
+                                {% else %}{{ "{:,.0f}".format(value) }}{% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <div class="chart-grid">
+                    <div class="chart-box full-width">
+                        <h3><span class="has-tip" data-tip-key="5년 종가 추세">📈 5년 종가 추세 (MA20 / MA60)</span></h3>
+                        <div class="chart-canvas-wrap"><canvas id="priceChart"></canvas></div>
+                    </div>
+                    <div class="chart-box">
+                        <h3><span class="has-tip" data-tip-key="거래량">📦 거래량</span></h3>
+                        <div class="chart-canvas-wrap"><canvas id="volumeChart"></canvas></div>
+                    </div>
+                    <div class="chart-box">
+                        <h3><span class="has-tip" data-tip-key="30일 롤링 변동성">📉 30일 롤링 변동성 (연환산)</span></h3>
+                        <div class="chart-canvas-wrap"><canvas id="volatilityChart"></canvas></div>
+                    </div>
+                    <div class="chart-box">
+                        <h3><span class="has-tip" data-tip-key="일간 수익률 분포">📊 일간 수익률 분포</span></h3>
+                        <div class="chart-canvas-wrap"><canvas id="returnsHistChart"></canvas></div>
+                    </div>
+                    <div class="chart-box full-width">
+                        <h3><span class="has-tip" data-tip-key="월별 수익률">🗓️ 월별 수익률</span></h3>
+                        <div class="chart-canvas-wrap"><canvas id="monthlyReturnsChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            {% if dashboard.analysis %}
+            <div class="card">
+                <h2>📈 모델 및 통계 요약</h2>
+                <div class="analysis-grid">
+                    <div class="analysis-block">
+                        <h3><span class="has-tip" data-tip-key="데이터 개요">📅 데이터 개요</span></h3>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="수집 기간">수집 기간</span><span class="analysis-value">{{ dashboard.analysis.data_period.start }} ~ {{ dashboard.analysis.data_period.end }}</span></div>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="총 거래일">총 거래일</span><span class="analysis-value">{{ "{:,}".format(dashboard.analysis.data_period.total_days) }}일</span></div>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="훈련 / 테스트">훈련 / 테스트</span><span class="analysis-value">{{ dashboard.analysis.data_period.train_samples }} / {{ dashboard.analysis.data_period.test_samples }}</span></div>
+                    </div>
+                    <div class="analysis-block">
+                        <h3><span class="has-tip" data-tip-key="종가 통계">💰 종가 통계</span></h3>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="평균 종가">평균</span><span class="analysis-value">{{ dashboard.analysis.price_stats.close_mean|format_price }}</span></div>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="최저 / 최고">최저 / 최고</span><span class="analysis-value">{{ dashboard.analysis.price_stats.close_min|format_price }} ~ {{ dashboard.analysis.price_stats.close_max|format_price }}</span></div>
+                    </div>
+                    <div class="analysis-block">
+                        <h3><span class="has-tip" data-tip-key="모델 성능">🤖 모델 성능</span></h3>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="R²">R²</span><span class="analysis-value">{{ "%.4f"|format(dashboard.analysis.model_performance.r2_score) }}</span></div>
+                        <div class="analysis-row"><span class="analysis-label has-tip" data-tip-key="RMSE / MAE">RMSE / MAE</span><span class="analysis-value">{{ "%.2f"|format(dashboard.analysis.model_performance.rmse) }} / {{ "%.2f"|format(dashboard.analysis.model_performance.mae) }}</span></div>
+                    </div>
+                    {% if dashboard.analysis.get('valuation') and dashboard.analysis.valuation.get('metrics') %}
+                    <div class="analysis-block">
+                        <h3><span class="has-tip" data-tip-key="밸류에이션">💎 밸류에이션 (Yahoo Finance)</span></h3>
+                        {% for label, value in dashboard.analysis.valuation.metrics.items() %}
+                        <div class="analysis-row">
+                            <span class="analysis-label has-tip" data-tip-key="{{ label }}">{{ label }}</span>
+                            <span class="analysis-value">
+                                {% if label == '시가총액' %}{{ "{:,.0f}".format(value) }}
+                                {% elif label == '배당수익률' %}{{ "%.2f"|format(value) }}%
+                                {% elif value is number %}{{ "%.2f"|format(value) }}
+                                {% else %}{{ value }}{% endif %}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <div class="timestamp">마지막 업데이트: {{ now.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+    </div>
+
+    <!-- 진행 모달 -->
+    <div id="workflowModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">작업 진행 중...</div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill">0%</div></div>
+            <div id="stepList">
+                <div class="step" id="step1"><div class="step-icon"></div><div><div class="step-name">데이터 수집</div><div class="step-message">Yahoo Finance 5년 데이터...</div></div></div>
+                <div class="step" id="step2"><div class="step-icon"></div><div><div class="step-name">데이터 전처리</div><div class="step-message">NaN 제거 및 분할...</div></div></div>
+                <div class="step" id="step3"><div class="step-icon"></div><div><div class="step-name">모델 학습</div><div class="step-message">선형 회귀 학습...</div></div></div>
+                <div class="step" id="step4"><div class="step-icon"></div><div><div class="step-name">모델 평가</div><div class="step-message">성능 평가...</div></div></div>
+                <div class="step" id="step5"><div class="step-icon"></div><div><div class="step-name">모델 저장</div><div class="step-message">모델 저장...</div></div></div>
+            </div>
+            <div id="statusMessage" style="display:none;"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeWorkflowModal()" id="closeBtn">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    {% if dashboard and dashboard.chart_data %}
+    <script id="chartDataJson" type="application/json">{{ dashboard.chart_data | tojson }}</script>
+    {% endif %}
+
+    <script>
+        const stepMap = {
+            '데이터 수집': 'step1',
+            '데이터 전처리': 'step2',
+            '모델 학습': 'step3',
+            '모델 평가': 'step4',
+            '모델 저장': 'step5'
+        };
+        let statusInterval = null;
+
+        document.getElementById('searchInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') searchStocks();
+        });
+
+        async function searchStocks() {
+            const q = document.getElementById('searchInput').value.trim();
+            const list = document.getElementById('searchResults');
+            if (!q) { list.innerHTML = '<li class="empty-results">검색어를 입력하세요.</li>'; return; }
+
+            list.innerHTML = '<li class="empty-results">검색 중...</li>';
+            try {
+                const res = await fetch('/api/stocks/search?q=' + encodeURIComponent(q));
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                if (!data.results.length) {
+                    list.innerHTML = '<li class="empty-results">검색 결과가 없습니다.</li>';
+                    return;
+                }
+                list.innerHTML = data.results.map(item => `
+                    <li class="search-result-item">
+                        <div class="result-info">
+                            <strong>${escapeHtml(item.name)}</strong>
+                            <span>${escapeHtml(item.ticker)} · ${escapeHtml(item.exchange || '-')} ${item.sector ? '· ' + escapeHtml(item.sector) : ''}</span>
+                        </div>
+                        <button class="select-btn" onclick='selectStock(${JSON.stringify(item)})'>선택</button>
+                    </li>
+                `).join('');
+            } catch (err) {
+                list.innerHTML = `<li class="empty-results">오류: ${escapeHtml(err.message)}</li>`;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        async function selectStock(item) {
+            document.querySelectorAll('.select-btn').forEach(btn => btn.disabled = true);
+            openWorkflowModal('select', item.name);
+            try {
+                const res = await fetch('/api/stocks/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(item)
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                startStatusPolling();
+            } catch (err) {
+                showError(err.message);
+                document.querySelectorAll('.select-btn').forEach(btn => btn.disabled = false);
+            }
+        }
+
+        function openWorkflowModal(type, stockName) {
+            const modal = document.getElementById('workflowModal');
+            const title = document.getElementById('modalTitle');
+            title.textContent = type === 'select'
+                ? `📥 ${stockName || '종목'} 분석 시작...`
+                : '🔄 모델 재학습 진행 중...';
+            modal.classList.add('show');
+            if (document.getElementById('retrainBtn')) {
+                document.getElementById('retrainBtn').disabled = true;
+            }
+            resetSteps();
+            if (type === 'retrain') startRetrain();
+        }
+
+        async function startRetrain() {
+            await fetch('/api/retrain/reset', { method: 'POST' });
+            const res = await fetch('/api/retrain/start', { method: 'POST' });
+            const data = await res.json();
+            if (data.error) { showError(data.error); return; }
+            startStatusPolling();
+        }
+
+        function startStatusPolling() {
+            if (statusInterval) clearInterval(statusInterval);
+            statusInterval = setInterval(async () => {
+                const res = await fetch('/api/workflow/status');
+                const data = await res.json();
+                updateUI(data);
+                if (!data.running) {
+                    clearInterval(statusInterval);
+                    if (data.error) showError(data.error);
+                    else if (data.completed) showCompletion(data);
+                }
+            }, 500);
+        }
+
+        function resetSteps() {
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+            document.getElementById('statusMessage').style.display = 'none';
+            Object.values(stepMap).forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove('completed', 'current');
+            });
+        }
+
+        function updateUI(data) {
+            document.getElementById('progressFill').style.width = data.progress + '%';
+            document.getElementById('progressFill').textContent = data.progress + '%';
+            Object.entries(stepMap).forEach(([stepName, stepId]) => {
+                const stepEl = document.getElementById(stepId);
+                stepEl.classList.toggle('completed', data.steps_completed.includes(stepName));
+                stepEl.classList.toggle('current', stepName === data.current_step && !data.steps_completed.includes(stepName));
+                if (stepName === data.current_step) {
+                    stepEl.querySelector('.step-message').textContent = data.message || '';
+                }
+            });
+        }
+
+        function showCompletion(data) {
+            const msg = document.getElementById('statusMessage');
+            msg.style.display = 'block';
+            msg.className = 'status-message success';
+            msg.innerHTML = `
+                <h3>✓ 작업 완료!</h3>
+                <p style="margin-top:10px;">
+                    <strong>${escapeHtml(data.stock_name)}</strong> (${escapeHtml(data.ticker)})<br>
+                    모델 R²: ${(data.model_r2 || 0).toFixed(4)} · RMSE: ${(data.model_rmse || 0).toFixed(2)}
+                </p>
+                <p style="margin-top:10px;font-size:0.9em;color:#666;">닫기를 누르면 예측 결과 페이지로 이동합니다.</p>`;
+            document.getElementById('closeBtn').textContent = '결과 보기';
+        }
+
+        function showError(errorMsg) {
+            const msg = document.getElementById('statusMessage');
+            msg.style.display = 'block';
+            msg.className = 'status-message error';
+            msg.innerHTML = `<h3>✗ 오류 발생</h3><p style="margin-top:10px;">${escapeHtml(errorMsg)}</p>`;
+            if (document.getElementById('retrainBtn')) {
+                document.getElementById('retrainBtn').disabled = false;
+            }
+            document.querySelectorAll('.select-btn').forEach(btn => btn.disabled = false);
+        }
+
+        function closeWorkflowModal() {
+            document.getElementById('workflowModal').classList.remove('show');
+            location.reload();
+        }
+
+        const METRIC_TIPS = {
+            '연환산 변동성': '일간 수익률의 표준편차를 1년(252거래일) 기준으로 환산한 값입니다. 높을수록 주가 변동이 크고 위험도가 높다고 해석합니다.',
+            '최대 낙폭 (MDD)': '기간 중 고점 대비 최대 하락폭(%)입니다. -30%이면 최고점에서 30%까지 떨어졌던 구간이 있었다는 뜻입니다.',
+            'Sharpe Ratio': '위험(변동성) 대비 초과 수익을 나타내는 지표입니다. 1 이상이면 위험 대비 수익이 양호한 편으로 봅니다.',
+            'PER (후행)': '주가 ÷ 최근 12개월 EPS. 현재 주가가 1년 순이익의 몇 배인지 나타내며, 업종·성장성에 따라 적정 수준이 다릅니다.',
+            'PER (선행)': '주가 ÷ 예상 EPS. 앞으로 1년 예상 이익 기준 PER로, 미래 성장 기대가 반영됩니다.',
+            'PBR': '주가 ÷ 주당순자산(BPS). 1 미만이면 장부가치보다 낮게 거래 중일 수 있습니다.',
+            'PSR': '주가 ÷ 매출. PER과 유사하지만 아직 이익이 없는 기업에도 적용 가능합니다.',
+            'EV/EBITDA': '기업가치 ÷ EBITDA. 부채를 포함한 가치 대비 영업현금창출력을 비교할 때 사용합니다.',
+            'PEG': 'PER ÷ 이익 성장률. 성장률을 고려한 PER로, 1 근처면 성장 대비 적정 밸류에이션으로 봅니다.',
+            '베타': '시장(보통 지수) 대비 주가 민감도입니다. 1보다 크면 시장보다 변동성이 크고, 1보다 작으면 방어적입니다.',
+            '배당수익률': '연간 배당금 ÷ 주가 × 100(%). 투자금 대비 배당으로 받는 수익 비율입니다.',
+            '시가총액': '주가 × 발행주식수. 기업 전체 시장에서 평가받는 규모입니다.',
+            'EPS (후행)': '최근 12개월 순이익 ÷ 주식 수. 주당 순이익으로, PER 계산의 기반이 됩니다.',
+            'BPS': '순자산 ÷ 주식 수. 주당 장부가치로, PBR 계산에 사용됩니다.',
+            '52주 최고': '최근 52주(1년) 동안 기록된 최고 주가입니다.',
+            '52주 최저': '최근 52주(1년) 동안 기록된 최저 주가입니다.',
+            '5년 종가 추세': '5년간 일별 종가와 이동평균선(MA20, MA60)을 보여줍니다. 중기·장기 추세와 지지/저항 파악에 활용합니다.',
+            '거래량': '하루 동안 거래된 주식 수입니다. 가격 상승·하락 시 거래량 증가는 추세 신뢰도를 높이는 경우가 많습니다.',
+            '30일 롤링 변동성': '최근 30거래일 수익률 변동을 연환산(%)한 값입니다. 단기적 불확실성·공포/탐욕 변화를 확인합니다.',
+            '일간 수익률 분포': '하루하루 종가 변동률(%)의 빈도 분포입니다. 정규분포에 가까우면 예측이 상대적으로 수월하고, 꼬리가 두꺼우면 급등락이 잦습니다.',
+            '월별 수익률': '매월 말 종가 기준 전월 대비 수익률(%)입니다. 계절성·월별 성과 패턴을 확인할 수 있습니다.',
+            '데이터 개요': '모델 학습에 사용된 Yahoo Finance 5년 데이터의 기본 정보입니다.',
+            '수집 기간': '다운로드한 주가 데이터의 시작일과 종료일입니다.',
+            '총 거래일': '주말·공휴일을 제외한 실제 거래가 있었던 일 수입니다.',
+            '훈련 / 테스트': '모델 학습(80%)과 성능 검증(20%)에 사용된 데이터 샘플 수입니다.',
+            '종가 통계': '5년간 종가의 대표적인 통계값으로, 가격 수준과 변동 범위를 요약합니다.',
+            '평균 종가': '기간 중 종가의 산술 평균입니다.',
+            '최저 / 최고': '5년간 기록된 최저·최고 종가입니다.',
+            '모델 성능': '선형 회귀 모델이 테스트 데이터에서 얼마나 잘 맞추는지 보여주는 지표입니다.',
+            'R²': '결정계수(0~1). 1에 가까울수록 모델이 데이터 변동을 잘 설명합니다.',
+            'RMSE / MAE': 'RMSE: 예측 오차 제곱 평균의 제곱근(큰 오차에 민감). MAE: 절대 오차 평균. 둘 다 작을수록 좋습니다.',
+            '밸류에이션': 'Yahoo Finance에서 제공하는 기업 가치 평가 지표입니다.',
+            '종가': '해당 거래일의 마감 가격입니다.',
+            'MA20': '최근 20거래일 종가 평균(단기 이동평균).',
+            'MA60': '최근 60거래일 종가 평균(중기 이동평균).',
+            '변동성 (%)': '30일 롤링 연환산 변동성. 단기 리스크 수준을 나타냅니다.',
+            '빈도': '해당 수익률 구간에 속하는 거래일 수입니다.',
+            '월 수익률 (%)': '해당 월의 전월 대비 종가 변동률입니다.'
+        };
+
+        function initMetricTooltips() {
+            document.querySelectorAll('[data-tip-key]').forEach(el => {
+                const key = el.getAttribute('data-tip-key');
+                const tip = METRIC_TIPS[key];
+                if (tip) {
+                    el.setAttribute('data-tip', tip);
+                    el.setAttribute('tabindex', '0');
+                }
+            });
+        }
+
+        function chartTooltipFooter(label) {
+            const map = {
+                '종가': METRIC_TIPS['종가'],
+                'MA20': METRIC_TIPS['MA20'],
+                'MA60': METRIC_TIPS['MA60'],
+                '거래량': METRIC_TIPS['거래량'],
+                '변동성 (%)': METRIC_TIPS['변동성 (%)'],
+                '빈도': METRIC_TIPS['빈도'],
+                '월 수익률 (%)': METRIC_TIPS['월 수익률 (%)']
+            };
+            return map[label] || '';
+        }
+
+        function makeChartTooltip() {
+            return {
+                callbacks: {
+                    afterBody(items) {
+                        if (!items.length) return [];
+                        const label = items[0].dataset.label || '';
+                        const tip = chartTooltipFooter(label);
+                        return tip ? ['', '💡 ' + tip] : [];
+                    }
+                }
+            };
+        }
+
+        function downsampleLabels(labels, valuesList, maxPoints = 120) {
+            if (labels.length <= maxPoints) return { labels, valuesList };
+            const step = Math.ceil(labels.length / maxPoints);
+            const newLabels = [];
+            const newValues = valuesList.map(() => []);
+            for (let i = 0; i < labels.length; i += step) {
+                newLabels.push(labels[i]);
+                valuesList.forEach((arr, idx) => newValues[idx].push(arr[i]));
+            }
+            return { labels: newLabels, valuesList: newValues };
+        }
+
+        function renderAnalysisCharts() {
+            const el = document.getElementById('chartDataJson');
+            if (!el || typeof Chart === 'undefined') return;
+            let charts;
+            try { charts = JSON.parse(el.textContent); } catch (e) { return; }
+
+            const price = charts.price_trend || {};
+            const volume = charts.volume || {};
+            const vol = charts.rolling_volatility || {};
+            const hist = charts.daily_returns_hist || {};
+            const monthly = charts.monthly_returns || {};
+
+            const ds = downsampleLabels(price.dates || [], [price.close || [], price.ma20 || [], price.ma60 || []]);
+            const volDs = downsampleLabels(volume.dates || [], [volume.values || []]);
+            const rollDs = downsampleLabels(vol.dates || [], [vol.values || []]);
+
+            new Chart(document.getElementById('priceChart'), {
+                type: 'line',
+                data: {
+                    labels: ds.labels,
+                    datasets: [
+                        { label: '종가', data: ds.valuesList[0], borderColor: '#667eea', backgroundColor: '#667eea22', tension: 0.2, pointRadius: 0, borderWidth: 2 },
+                        { label: 'MA20', data: ds.valuesList[1], borderColor: '#f5576c', pointRadius: 0, borderWidth: 1.5 },
+                        { label: 'MA60', data: ds.valuesList[2], borderColor: '#2ed573', pointRadius: 0, borderWidth: 1.5 }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, tooltip: makeChartTooltip() }, scales: { x: { ticks: { maxTicksLimit: 8 } } } }
+            });
+
+            new Chart(document.getElementById('volumeChart'), {
+                type: 'bar',
+                data: {
+                    labels: volDs.labels,
+                    datasets: [{ label: '거래량', data: volDs.valuesList[0], backgroundColor: '#764ba288' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: makeChartTooltip() }, scales: { x: { ticks: { maxTicksLimit: 6 } } } }
+            });
+
+            new Chart(document.getElementById('volatilityChart'), {
+                type: 'line',
+                data: {
+                    labels: rollDs.labels,
+                    datasets: [{ label: '변동성 (%)', data: rollDs.valuesList[0], borderColor: '#ffa502', backgroundColor: '#ffa50233', fill: true, pointRadius: 0, tension: 0.3 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: makeChartTooltip() }, scales: { x: { ticks: { maxTicksLimit: 6 } } } }
+            });
+
+            new Chart(document.getElementById('returnsHistChart'), {
+                type: 'bar',
+                data: {
+                    labels: (hist.labels || []).filter((_, i) => i % 4 === 0),
+                    datasets: [{ label: '빈도', data: (hist.counts || []).filter((_, i) => i % 4 === 0), backgroundColor: '#667eea99' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: '일간 수익률 (%)' }, tooltip: makeChartTooltip() } }
+            });
+
+            new Chart(document.getElementById('monthlyReturnsChart'), {
+                type: 'bar',
+                data: {
+                    labels: monthly.labels || [],
+                    datasets: [{
+                        label: '월 수익률 (%)',
+                        data: monthly.values || [],
+                        backgroundColor: (monthly.values || []).map(v => v >= 0 ? '#ff475788' : '#2ed57388')
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: makeChartTooltip() }, scales: { x: { ticks: { maxTicksLimit: 12 } } } }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initMetricTooltips();
+            renderAnalysisCharts();
+        });
+    </script>
+</body>
+</html>
