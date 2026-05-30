@@ -21,7 +21,8 @@ Yahoo Finance에서 **종목을 검색·선택**하면 최근 5년 일봉 데이
 11. [로컬 생성 파일 (Git 미포함)](#11-로컬-생성-파일-git-미포함)
 12. [주의사항](#12-주의사항)
 13. [문제 해결](#13-문제-해결)
-14. [참고 자료](#14-참고-자료)
+14. [E2E 테스트 (Playwright)](#14-e2e-테스트-playwright)
+15. [참고 자료](#15-참고-자료)
 
 ---
 
@@ -290,6 +291,11 @@ predict_stock/
 ├── templates/
 │   ├── index.html            # 웹 대시보드
 │   └── error.html            # 오류 페이지
+├── tests/
+│   ├── conftest.py           # pytest 설정, Flask fixture
+│   └── e2e/
+│       ├── __init__.py
+│       └── test_search_lg_cns.py  # E2E 테스트 시나리오 4개
 ├── app.py                    # Flask 메인 (진입점)
 ├── fetch_samsung_stock.py    # [레거시] 데이터 수집
 ├── preprocess_samsung_stock.py
@@ -300,6 +306,9 @@ predict_stock/
 ├── detect_outliers.py
 ├── analyze_and_visualize.py
 ├── pyproject.toml            # 프로젝트 메타데이터
+├── pytest.ini                # pytest 설정
+├── requirements.txt          # 런타임 의존성
+├── requirements-dev.txt      # 개발용 의존성 (Playwright, pytest)
 ├── .python-version
 ├── .gitignore
 └── README.md
@@ -324,11 +333,12 @@ models/                       # 학습된 모델
     ├── analysis.json
     └── charts.json
 
-logs/app.log                  # 실행 로그
+logs/app.log                  # 실행 로그 (UTF-8)
 analysis/                     # CLI 분석 PNG (레거시)
 predictions/                  # 예측 로그 (레거시)
 .venv/                        # 가상환경
-requirements.txt              # Python 패키지 의존성 목록
+.pytest_cache/                # pytest 캐시
+.playwright-mcp/              # Playwright MCP 스냅샷 (개발용)
 ```
 
 **로그 확인:**
@@ -415,24 +425,11 @@ python app.py
 
 ---
 
-## 14. 참고 자료
-
-- [yfinance](https://github.com/ranaroussi/yfinance)
-- [Flask](https://flask.palletsprojects.com/)
-- [scikit-learn](https://scikit-learn.org/)
-- [Chart.js](https://www.chartjs.org/)
-- [UV](https://docs.astral.sh/uv/)
-- [Yahoo Finance](https://finance.yahoo.com)
-
----
-
-## 라이선스
-
-MIT License
-
----
-
 ## 14. E2E 테스트 (Playwright)
+
+### 개요
+
+pytest-playwright를 활용한 **자동화된 종단 간(E2E) 테스트**로 검색, 종목 선택, 데이터 수집, 모델 학습, 예측값 및 그래프 렌더링까지 전체 워크플로우를 검증합니다.
 
 ### 설치
 
@@ -441,20 +438,73 @@ uv pip install -r requirements-dev.txt
 playwright install chromium
 ```
 
-### 실행 (헤드리스)
+### 실행
+
+**헤드리스 모드 (권장):**
 
 ```powershell
 pytest tests/e2e/ -v
 ```
 
-### 브라우저로 보며 실행
+**브라우저로 보며 실행:**
 
 ```powershell
-pytest tests/e2e/ -v --headed
+pytest tests/e2e/test_search_lg_cns.py -v --headed
 ```
 
-### 테스트 내용
+### 테스트 시나리오
 
-- **LG CNS 검색**: 한글 종목명 `"LG CNS"` 검색 시 결과 정상 반환 확인
-- **티커 검색**: 숫자 코드 `"064400"` 검색 시 결과 정상 반환 확인
-- **빈 검색어**: 검색어 없이 검색 버튼 클릭 시 안내 메시지 표시
+| 테스트 | 검증 항목 |
+|--------|----------|
+| **test_search_lg_cns[LG CNS]** | 한글 종목명 "LG CNS" 검색 → 결과 정상 반환 |
+| **test_search_lg_cns[064400]** | 숫자 티커 "064400" 검색 → 종목 정보 확인 |
+| **test_search_empty_query** | 빈 검색어 → 안내 메시지 표시 |
+| **test_full_workflow_lg_cns** | 검색 → 선택 → 수집/학습 완료 → **예측값** & **그래프 렌더링** 확인 |
+
+### 최신 테스트 결과
+
+```
+tests/e2e/test_search_lg_cns.py::test_search_lg_cns[chromium-LG CNS-expected_contains0] PASSED
+tests/e2e/test_search_lg_cns.py::test_search_empty_query[chromium] PASSED
+tests/e2e/test_search_lg_cns.py::test_full_workflow_lg_cns[chromium] PASSED
+tests/e2e/test_search_lg_cns.py::test_search_lg_cns[chromium-064400-expected_contains1] PASSED
+
+======================== 4 passed in 68.45s ========================
+```
+
+### 아키텍처
+
+**conftest.py:**
+- Flask 서버 자동 기동 (subprocess, 동적 포트 할당)
+- Health check (최대 60초 대기)
+- 세션별 teardown으로 자동 정리
+
+**test_search_lg_cns.py:**
+- Playwright page fixture 활용
+- 매개변수화 테스트 (`@pytest.mark.parametrize`)
+- 네트워크 이벤트 대기 (`wait_for_selector`, `wait_for_load_state`)
+
+### 주의사항
+
+- 첫 실행 시 Playwright 설치 필요 (`playwright install chromium`)
+- 테스트는 Flask 서버를 자동 기동하므로 포트 5000 미사용 상태 필요
+- 유사 포트 충돌 시 동적 포트 할당으로 자동 대체
+
+---
+
+## 15. 참고 자료
+
+- [yfinance](https://github.com/ranaroussi/yfinance)
+- [Flask](https://flask.palletsprojects.com/)
+- [scikit-learn](https://scikit-learn.org/)
+- [Chart.js](https://www.chartjs.org/)
+- [UV](https://docs.astral.sh/uv/)
+- [Playwright](https://playwright.dev/python/) — E2E 테스트
+- [pytest](https://docs.pytest.org/) — 테스트 프레임워크
+- [Yahoo Finance](https://finance.yahoo.com)
+
+---
+
+## 라이선스
+
+MIT License
