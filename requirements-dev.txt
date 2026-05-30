@@ -1,0 +1,4 @@
+# E2E 테스트용 개발 의존성 (앱 런타임 제외)
+pytest==7.4.4
+pytest-playwright==0.4.3
+playwright==1.48.0

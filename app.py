@@ -404,5 +404,7 @@ def get_new_prediction():
 
 
 if __name__ == "__main__":
-    logger.info("Flask 서버 시작 (http://0.0.0.0:5000, 로그: %s)", LOG_FILE)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    import os
+    port = int(os.getenv("PORT", 5000))
+    logger.info("Flask 서버 시작 (http://0.0.0.0:%d, 로그: %s)", port, LOG_FILE)
+    app.run(debug=True, host="0.0.0.0", port=port)

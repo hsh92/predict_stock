@@ -429,3 +429,32 @@ python app.py
 ## 라이선스
 
 MIT License
+
+---
+
+## 14. E2E 테스트 (Playwright)
+
+### 설치
+
+```powershell
+uv pip install -r requirements-dev.txt
+playwright install chromium
+```
+
+### 실행 (헤드리스)
+
+```powershell
+pytest tests/e2e/ -v
+```
+
+### 브라우저로 보며 실행
+
+```powershell
+pytest tests/e2e/ -v --headed
+```
+
+### 테스트 내용
+
+- **LG CNS 검색**: 한글 종목명 `"LG CNS"` 검색 시 결과 정상 반환 확인
+- **티커 검색**: 숫자 코드 `"064400"` 검색 시 결과 정상 반환 확인
+- **빈 검색어**: 검색어 없이 검색 버튼 클릭 시 안내 메시지 표시
