@@ -15,11 +15,17 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 def find_free_port():
     """사용 가능한 포트를 찾습니다."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
-        s.listen(1)
-        port = s.getsockname()[1]
-    return port
+    for _ in range(10):  # 최대 10번 시도
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(('127.0.0.1', 0))
+                s.listen(1)
+                port = s.getsockname()[1]
+                return port
+        except OSError:
+            continue
+    return 5001  # fallback
 
 
 @pytest.fixture(scope="session")
@@ -41,10 +47,10 @@ def flask_server():
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
     )
     
-    # health check: GET / 반복 (최대 45초)
-    max_wait = 45
+    # health check: GET / 반복 (최대 60초)
+    max_wait = 60
     start_time = time.time()
-    base_url = f"http://localhost:{test_port}"
+    base_url = f"http://127.0.0.1:{test_port}"
     
     last_error = None
     while time.time() - start_time < max_wait:
