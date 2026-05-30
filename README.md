@@ -131,10 +131,10 @@ source .venv/bin/activate
 
 ### 5-4. 패키지 설치
 
-이 저장소에는 `requirements.txt`를 **포함하지 않습니다.** 아래 명령으로 직접 설치하세요.
+저장소에 포함된 `requirements.txt`로 설치합니다.
 
 ```powershell
-uv pip install flask yfinance pandas scikit-learn numpy matplotlib seaborn
+uv pip install -r requirements.txt
 ```
 
 **설치 확인:**
@@ -328,7 +328,7 @@ logs/app.log                  # 실행 로그
 analysis/                     # CLI 분석 PNG (레거시)
 predictions/                  # 예측 로그 (레거시)
 .venv/                        # 가상환경
-requirements.txt              # 로컬 pip freeze (선택 생성)
+requirements.txt              # Python 패키지 의존성 목록
 ```
 
 **로그 확인:**
@@ -379,7 +379,7 @@ Get-Content logs\app.log -Tail 50 -Wait
 
 ```powershell
 .venv\Scripts\Activate.ps1
-uv pip install flask yfinance pandas scikit-learn numpy matplotlib seaborn
+uv pip install -r requirements.txt
 ```
 
 ### `uv run python app.py` 빌드 오류

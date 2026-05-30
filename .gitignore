@@ -15,8 +15,7 @@ dist/
 build/
 predict_stock.egg-info/
 
-# ── 의존성 / 잠금 파일 (GitHub에 올리지 않음) ──
-requirements.txt
+# ── 의존성 / 잠금 파일 ──
 uv.lock
 Pipfile
 Pipfile.lock
