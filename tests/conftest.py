@@ -58,7 +58,7 @@ def flask_server():
         server_process.kill()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def base_url(flask_server):
     """Flask 서버 base URL."""
     return flask_server
