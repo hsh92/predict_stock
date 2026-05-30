@@ -103,7 +103,7 @@ Yahoo Finance에서 **종목을 검색·선택**하면 최근 5년 일봉 데이
 ### 5-1. 저장소 클론
 
 ```powershell
-git clone https://github.com/<YOUR_USERNAME>/predict_stock.git
+git clone https://github.com/hsh92/predict_stock.git
 cd predict_stock
 ```
 
